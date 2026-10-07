@@ -3,8 +3,8 @@ using UnityEngine;
 namespace LB
 {
     /// <summary>
-    /// Panel online de la sala de espera (IMGUI): nombre, IP del anfitrion y botones para
-    /// crear partida, unirse o desconectarse.
+    /// Panel online de la sala de espera (IMGUI): nombre, codigo de sala o IP, servidor, y botones para
+    /// crear una sala online (servidor de rele), crear en red local, unirse o desconectarse.
     /// </summary>
     public class NetMenu : MonoBehaviour
     {
@@ -12,14 +12,17 @@ namespace LB
         public static string Message = "";
 
         string playerName;
-        string address;
-        GUIStyle box, label, small, button, field;
+        string address;   // codigo de sala o IP del anfitrion
+        string server;    // servidor de rele
+        GUIStyle box, label, small, button, field, code;
         float lastScale;
 
         void Awake()
         {
             playerName = PlayerPrefs.GetString("lb_name", "Jugador");
-            address = PlayerPrefs.GetString("lb_host", "127.0.0.1");
+            address = PlayerPrefs.GetString("lb_host", "");
+            server = PlayerPrefs.GetString("lb_server", Net.DefaultServer);
+            if (string.IsNullOrWhiteSpace(server)) server = Net.DefaultServer;
         }
 
         void OnDisable()
@@ -45,6 +48,8 @@ namespace LB
             small.normal.textColor = new Color(0.85f, 0.92f, 1f);
             button = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(17 * s), fontStyle = FontStyle.Bold };
             field = new GUIStyle(GUI.skin.textField) { fontSize = Mathf.RoundToInt(17 * s), alignment = TextAnchor.MiddleLeft };
+            code = new GUIStyle(GUI.skin.label) { fontSize = Mathf.RoundToInt(44 * s), fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            code.normal.textColor = Color.white;
         }
 
         void OnGUI()
@@ -58,7 +63,7 @@ namespace LB
             float s = Mathf.Clamp(Screen.height / 1080f, 0.7f, 2f);
             Styles(s);
 
-            float w = 360f * s, h = (Net.IsOnline ? 210f : 290f) * s;
+            float w = 380f * s, h = (Net.IsOnline ? (Net.IsHost && Net.Host.UsesRelay ? 270f : 210f) : 420f) * s;
             var rect = new Rect(Screen.width - w - 20f * s, 20f * s, w, h);
             var e = Event.current;
             bool over = rect.Contains(e.mousePosition);
@@ -79,26 +84,51 @@ namespace LB
             if (!Net.IsOnline)
             {
                 GUILayout.Label("Tu nombre", small);
-                GUI.SetNextControlName("lb_name");
                 playerName = GUILayout.TextField(playerName, 16, field, GUILayout.Height(lh));
-                GUILayout.Label("IP del anfitrión (para unirte)", small);
-                GUI.SetNextControlName("lb_host");
-                address = GUILayout.TextField(address, 64, field, GUILayout.Height(lh));
                 GUILayout.Space(6f * s);
+                if (GUILayout.Button("Crear sala online", button, GUILayout.Height(lh + 6f * s)))
+                {
+                    Save();
+                    if (string.IsNullOrWhiteSpace(server)) Message = "Escribe abajo la dirección del servidor";
+                    else
+                    {
+                        Message = "";
+                        Net.StartHost(server.Trim());
+                    }
+                }
+                GUILayout.Label("Código de sala (o IP en red local)", small);
                 GUILayout.BeginHorizontal();
-                if (GUILayout.Button("Crear partida", button, GUILayout.Height(lh + 6f * s)))
+                address = GUILayout.TextField(address, 64, field, GUILayout.Height(lh));
+                if (GUILayout.Button("Unirse", button, GUILayout.Width(100f * s), GUILayout.Height(lh)))
+                {
+                    Save();
+                    Join();
+                }
+                GUILayout.EndHorizontal();
+                GUILayout.Space(6f * s);
+                if (GUILayout.Button("Crear en red local (LAN)", button, GUILayout.Height(lh)))
                 {
                     Save();
                     Message = "";
                     Net.StartHost();
                 }
-                if (GUILayout.Button("Unirse", button, GUILayout.Height(lh + 6f * s)))
+                GUILayout.Space(4f * s);
+                GUILayout.Label("Servidor online", small);
+                server = GUILayout.TextField(server, 128, field, GUILayout.Height(lh));
+            }
+            else if (Net.IsHost && Net.Host.UsesRelay)
+            {
+                if (Net.Host.RoomCode != null)
                 {
-                    Save();
-                    Message = "";
-                    Net.StartClient(address.Trim(), playerName);
+                    GUILayout.Label("Código de sala", small);
+                    GUILayout.Label(Net.Host.RoomCode, code, GUILayout.Height(56f * s));
+                    GUILayout.Label("Pásaselo a tus amigos. Jugadores online: " + Net.Host.Peers.Count, small);
+                    if (GUILayout.Button("Copiar código", button, GUILayout.Height(lh)))
+                        GUIUtility.systemCopyBuffer = Net.Host.RoomCode;
                 }
-                GUILayout.EndHorizontal();
+                else GUILayout.Label(Net.Host.Status, small);
+                GUILayout.Space(6f * s);
+                if (GUILayout.Button("Cerrar sala", button, GUILayout.Height(lh + 6f * s))) Disconnect();
             }
             else
             {
@@ -107,12 +137,7 @@ namespace LB
                                            : Net.Client.Status;
                 GUILayout.Label(status, small);
                 GUILayout.Space(6f * s);
-                if (GUILayout.Button(Net.IsHost ? "Cerrar partida online" : "Desconectar", button, GUILayout.Height(lh + 6f * s)))
-                {
-                    Message = "";
-                    Net.Stop();
-                    GameManager.I.OnNetStopped();
-                }
+                if (GUILayout.Button(Net.IsHost ? "Cerrar partida" : "Desconectar", button, GUILayout.Height(lh + 6f * s))) Disconnect();
             }
             if (!string.IsNullOrEmpty(Message))
             {
@@ -124,11 +149,40 @@ namespace LB
             Keys.Blocked = GUIUtility.keyboardControl != 0;
         }
 
+        void Join()
+        {
+            string a = address.Trim();
+            if (a.Length == 0)
+            {
+                Message = "Escribe el código de la sala o la IP del anfitrión";
+                return;
+            }
+            Message = "";
+            if (Net.LooksLikeCode(a))
+            {
+                if (string.IsNullOrWhiteSpace(server))
+                {
+                    Message = "Escribe abajo la dirección del servidor";
+                    return;
+                }
+                Net.StartClient(server.Trim(), playerName, a);
+            }
+            else Net.StartClient(a, playerName);
+        }
+
+        static void Disconnect()
+        {
+            Message = "";
+            Net.Stop();
+            GameManager.I.OnNetStopped();
+        }
+
         void Save()
         {
             if (string.IsNullOrWhiteSpace(playerName)) playerName = "Jugador";
             PlayerPrefs.SetString("lb_name", playerName.Trim());
             PlayerPrefs.SetString("lb_host", address.Trim());
+            PlayerPrefs.SetString("lb_server", server.Trim());
             PlayerPrefs.Save();
             GUI.FocusControl(null);
         }

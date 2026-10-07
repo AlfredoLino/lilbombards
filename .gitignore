@@ -23,3 +23,7 @@
 *.apk
 Crashes/
 *.pdb
+# Servidor de rele
+!Server/*.csproj
+Server/bin/
+Server/obj/

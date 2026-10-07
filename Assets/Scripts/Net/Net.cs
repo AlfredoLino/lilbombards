@@ -19,6 +19,13 @@ namespace LB
         public const int Protocol = 1;
         public const string GameVersion = "0.1.0";
 
+        /// <summary>
+        /// Servidor de rele para las salas online (dominio o IP del VPS, opcionalmente con ":puerto").
+        /// Ponlo aqui antes de compilar el .exe para que tus amigos no tengan que escribirlo.
+        /// Cada jugador puede cambiarlo en el panel ONLINE.
+        /// </summary>
+        public const string DefaultServer = "";
+
         public static Mode Current = Mode.Offline;
         public static bool IsHost => Current == Mode.Host;
         public static bool IsClient => Current == Mode.Client;
@@ -48,19 +55,45 @@ namespace LB
             if (Client != null) Client.Tick();
         }
 
-        public static void StartHost()
+        /// <summary>Crea partida: en red local (server = null) o como sala online en el servidor de rele.</summary>
+        public static void StartHost(string server = null)
         {
             Stop();
             Host = new NetHost();
-            if (Host.Start()) Current = Mode.Host;
+            if (server == null ? Host.Start() : Host.StartRelay(server)) Current = Mode.Host;
             else Host = null;
         }
 
-        public static void StartClient(string address, string name)
+        /// <summary>Se une por IP (code = null) o a una sala online con su codigo.</summary>
+        public static void StartClient(string address, string name, string code = null)
         {
             Stop();
-            Client = new NetClient(address, name);
+            Client = new NetClient(address, name, code);
             Current = Mode.Client;
+        }
+
+        /// <summary>"host", "host:puerto" o "[ipv6]:puerto".</summary>
+        public static void ParseAddress(string s, out string host, out int port)
+        {
+            s = (s ?? "").Trim();
+            host = s;
+            port = Port;
+            int c = s.LastIndexOf(':');
+            if (c > 0 && s.IndexOf(':') == c || s.StartsWith("[") && c > s.IndexOf(']'))
+            {
+                if (int.TryParse(s.Substring(c + 1), out int p)) port = p;
+                host = s.Substring(0, c).Trim('[', ']');
+            }
+        }
+
+        /// <summary>Un codigo de sala: 4-6 letras/numeros, sin puntos ni dos puntos.</summary>
+        public static bool LooksLikeCode(string s)
+        {
+            s = (s ?? "").Trim();
+            if (s.Length < 4 || s.Length > 6) return false;
+            foreach (char ch in s)
+                if (!char.IsLetterOrDigit(ch)) return false;
+            return true;
         }
 
         public static void Stop()

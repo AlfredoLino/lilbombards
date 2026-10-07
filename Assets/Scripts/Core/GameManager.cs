@@ -164,8 +164,12 @@ namespace LB
             sb.AppendLine("Eliminaciones para ganar: <color=#FFD23F>" + KillsToWin + "</color>   <size=26>( RePág / AvPág | cruceta )</size>");
             sb.AppendLine();
             sb.AppendLine("<color=#7CFF6B>ENTER / START para empezar</color>   <size=26>ESC para " + (humans.Count > 0 ? "vaciar la sala" : "salir") + "</size>");
-            if (Net.IsHost)
-                sb.AppendLine("<size=28><color=#7FD8FF>Online: anfitrión en " + NetHost.LocalAddresses() + "  (puerto " + Net.Port + ")</color></size>");
+            if (Net.IsHost && Net.Host.UsesRelay)
+                sb.AppendLine(Net.Host.RoomCode != null
+                    ? "<size=40><color=#7FD8FF>Código de sala: <color=#FFFFFF>" + Net.Host.RoomCode + "</color></color></size>"
+                    : "<size=28><color=#7FD8FF>Creando sala online...</color></size>");
+            else if (Net.IsHost)
+                sb.AppendLine("<size=28><color=#7FD8FF>Red local: anfitrión en " + NetHost.LocalAddresses() + "  (puerto " + Net.Port + ")</color></size>");
             string footer =
                 "Teclado 1: " + kb0.Describe() + "\n" +
                 "Teclado 2: " + kb1.Describe() + "\n" +

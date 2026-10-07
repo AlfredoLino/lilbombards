@@ -18,6 +18,8 @@ namespace LB
     {
         readonly string address;
         readonly string name;
+        readonly string code;      // sala online (null = conexion directa por IP)
+        bool waitingRelay;
         TcpClient tcp;
         Task connectTask;
         NetConn conn;
@@ -37,14 +39,16 @@ namespace LB
         public readonly Dictionary<int, TntBox> Tnts = new Dictionary<int, TntBox>();
         public readonly Dictionary<int, PlayerSlot> Slots = new Dictionary<int, PlayerSlot>();
 
-        public NetClient(string address, string name)
+        public NetClient(string address, string name, string code = null)
         {
             this.address = address;
             this.name = string.IsNullOrWhiteSpace(name) ? "Jugador" : name.Trim();
+            this.code = string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
             try
             {
+                Net.ParseAddress(address, out string host, out int port);
                 tcp = new TcpClient();
-                connectTask = tcp.ConnectAsync(address, Net.Port);
+                connectTask = tcp.ConnectAsync(host, port);
             }
             catch (Exception e)
             {
@@ -73,28 +77,48 @@ namespace LB
                 if (!connectTask.IsCompleted) return;
                 if (connectTask.IsFaulted || !tcp.Connected)
                 {
-                    Fail("No se pudo conectar a " + address + ":" + Net.Port);
+                    Fail(code != null ? "No se pudo conectar con el servidor " + address : "No se pudo conectar a " + address);
                     return;
                 }
                 conn = new NetConn(tcp);
-                var ms = new MemoryStream();
-                var w = new BinaryWriter(ms);
-                w.Write((byte)Msg.Hello);
-                w.Write(Net.Protocol);
-                w.Write(Net.GameVersion);
-                w.Write(name);
-                conn.Send(ms);
-                Status = "Conectado, esperando al anfitrión...";
+                if (code != null)
+                {
+                    // Primero se pide entrar a la sala; el saludo al anfitrion va despues.
+                    var ms = new MemoryStream();
+                    var w = new BinaryWriter(ms);
+                    w.Write((byte)2);
+                    w.Write(Net.Protocol);
+                    w.Write(code);
+                    conn.Send(ms);
+                    waitingRelay = true;
+                    Status = "Buscando la sala " + code + "...";
+                }
+                else SendHello();
             }
 
             foreach (var m in conn.Poll())
             {
                 var r = new BinaryReader(new MemoryStream(m));
+                if (waitingRelay)
+                {
+                    if (m.Length > 0 && m[0] == 2)
+                    {
+                        waitingRelay = false;
+                        SendHello();
+                    }
+                    else
+                    {
+                        r.ReadByte();
+                        Fail(m.Length > 1 ? r.ReadString() : "El servidor rechazó la conexión");
+                        return;
+                    }
+                    continue;
+                }
                 switch ((Msg)r.ReadByte())
                 {
                     case Msg.Welcome:
                         MyId = r.ReadInt32();
-                        Status = "Conectado a " + address;
+                        Status = code != null ? "En la sala " + code : "Conectado a " + address;
                         break;
                     case Msg.Reject:
                         Fail(r.ReadString());
@@ -111,6 +135,18 @@ namespace LB
             }
 
             SendInput();
+        }
+
+        void SendHello()
+        {
+            var ms = new MemoryStream();
+            var w = new BinaryWriter(ms);
+            w.Write((byte)Msg.Hello);
+            w.Write(Net.Protocol);
+            w.Write(Net.GameVersion);
+            w.Write(name);
+            conn.Send(ms);
+            Status = "Conectado, esperando al anfitrión...";
         }
 
         void Fail(string why)

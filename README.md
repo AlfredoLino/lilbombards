@@ -153,24 +153,64 @@ En partida: ESC vuelve a la sala.
 
 En la sala de espera hay un panel **ONLINE** arriba a la derecha.
 
-- **Crear partida**: tu juego pasa a ser el anfitrión (puerto **TCP 7777**). El panel muestra tus IPs locales.
-  Tú juegas normal (con teclado/mando, bots, etc.) y empiezas la partida con ENTER cuando estén todos.
-- **Unirse**: escribe tu nombre y la IP del anfitrión y pulsa *Unirse*. Juegas con teclado+ratón o mando.
-  Puedes entrar también a mitad de partida. ESC (o *Desconectar*) te saca.
+### Por Internet: salas con código (recomendado)
+
+- **Crear sala online**: el juego se conecta al servidor y te da un **código de 4 letras** (p. ej. `K7QX`).
+  Pásaselo a tus amigos (*Copiar código*). Tú juegas normal y empiezas la partida con ENTER cuando estén todos.
+- **Unirse**: escribe tu nombre y el código en *Código de sala* y pulsa *Unirse*. Se juega con teclado+ratón o mando
+  y se puede entrar a mitad de partida. ESC (o *Desconectar*) te saca.
+- Nadie tiene que abrir puertos ni instalar VPN: el servidor de relé (`Server/`) solo reenvía los mensajes
+  entre el anfitrión y los demás.
+- El campo *Servidor online* debe tener la dirección del servidor. Si la pones en `Net.DefaultServer`
+  (ver [Desplegar el servidor](#desplegar-el-servidor-de-relé-con-dokploy)) antes de compilar el .exe,
+  ya viene rellena para todos.
+
+### En la misma red (LAN)
+
+- **Crear en red local (LAN)**: el anfitrión abre el puerto TCP 7777 en su PC y el panel muestra sus IPs locales.
+- Los demás escriben esa IP (`192.168.x.x`) en el mismo campo del código y pulsan *Unirse*.
 - La primera vez Windows preguntará si permites el acceso a la red: acepta (al menos redes privadas).
-
-Cómo conectarse según el caso:
-
-| Situación | Qué hacer |
-|---|---|
-| Misma casa / misma red | Usa la IP local del anfitrión (`192.168.x.x`). |
-| Por Internet, sin tocar el router | Instalad todos una VPN de juego (**Tailscale**, **ZeroTier** o **Radmin VPN**) y usad la IP que os da. |
-| Por Internet, con el router | El anfitrión redirige el puerto **TCP 7777** a su PC y comparte su IP pública. |
+- También funciona por Internet abriendo el puerto TCP 7777 en el router, o con una VPN tipo Tailscale/Radmin,
+  pero con las salas con código no hace falta.
 
 Funcionamiento: el anfitrión simula todo (física, bots, daño, desmembramiento) y envía ~30 instantáneas por
 segundo; los clientes solo mandan sus controles y dibujan el mundo recibido. Los trozos que saltan del cuerpo
 se calculan con la misma semilla en todos los equipos. Todos deben usar la **misma versión** del juego.
 Código en `Assets/Scripts/Net/`.
+
+### Desplegar el servidor de relé con Dokploy
+
+El servidor está en `Server/` (C# / .NET 10, con `Dockerfile` y `docker-compose.yml`). Usa muy poca CPU y memoria.
+Escucha en el puerto **TCP 7777**.
+
+1. En Dokploy: **Projects → Create Project** (p. ej. `lilbombards`) → **Create Service → Compose**.
+2. Pestaña **General**:
+   - *Provider*: **GitHub** (conecta tu cuenta si no lo está) → repositorio `lilbombards`, rama `main`.
+   - *Compose Path*: `./Server/docker-compose.yml`
+   - Opcional: en *Watch Paths* pon `Server/**` para que solo se vuelva a desplegar cuando cambie el servidor
+     (si no, cada `git push` del juego lo reinicia y corta las salas abiertas).
+3. Pulsa **Deploy** y mira la pestaña **Logs**: debe aparecer `Relé de Lil Bombards escuchando en el puerto 7777`.
+4. Abre el puerto en el firewall del VPS:
+   ```
+   sudo ufw allow 7777/tcp
+   ```
+   Si tu proveedor (Hetzner, Oracle, AWS…) tiene además un firewall en su panel web, abre también ahí **TCP 7777**.
+5. Comprueba desde tu PC (PowerShell): `Test-NetConnection IP_DEL_VPS -Port 7777` → `TcpTestSucceeded : True`.
+6. (Opcional) Un subdominio, p. ej. `lb.tudominio.com`, con un registro **A** a la IP del VPS. Si usas
+   **Cloudflare**, ponlo en **DNS only** (nube gris): el proxy de Cloudflare no deja pasar TCP directo.
+   Nota: aquí **no** hace falta configurar *Domains* en Dokploy (eso es para webs HTTP).
+7. En el juego escribe esa dirección en *Servidor online* (`lb.tudominio.com` o la IP; otro puerto: `host:puerto`).
+   Para que venga puesta en el .exe de tus amigos, edita `Assets/Scripts/Net/Net.cs`:
+   ```csharp
+   public const string DefaultServer = "lb.tudominio.com";
+   ```
+   y vuelve a compilar el juego.
+
+Alternativa sin Compose: **Create Service → Application**, *Build Type* **Dockerfile**, *Docker File* `Dockerfile`,
+*Docker Context Path* `Server`, y en **Advanced → Ports** publica `7777` → `7777` (TCP).
+
+Límites del servidor (en `Server/Program.cs`): 500 salas, 16 jugadores por sala. Las salas se cierran solas cuando
+el anfitrión se va.
 
 ## Qué incluye (fiel a BombSquad)
 
@@ -205,6 +245,7 @@ Assets/
     FX/         FX (partículas y efectos), Sfx (audio procedural)
     UI/         HUD (marcador, paneles de daño con silueta, mensajes)
     Net/        Online: Net (eventos), NetHost, NetClient, NetSnapshot, NetMenu
+Server/         Servidor de relé para las salas online (C#, Docker / Dokploy)
     Util/       Gfx (materiales/texturas/modelos), MeshBuilder, Compat (API Unity 2021–6)
   Resources/Shaders/  LB/Toon (plástico brillante), Unlit, Particle, Shield, Sky, Water
   Resources/Models/   FBX exportados desde Blender
@@ -222,4 +263,4 @@ Para ajustar la sensación de juego, casi todo está en `Assets/Scripts/Core/Tun
 - Selección de personaje/color en la sala, más personajes.
 - Equipos, menú principal, opciones (volumen, pantalla), sonido y música con archivos reales.
 - Ragdoll completo con articulaciones.
-- Online: predicción en el cliente para reducir la sensación de latencia, lista de servidores.
+- Online: predicción en el cliente para reducir la sensación de latencia, lista de salas públicas.

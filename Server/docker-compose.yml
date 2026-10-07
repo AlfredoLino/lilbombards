@@ -1,0 +1,8 @@
+services:
+  relay:
+    build: .
+    restart: unless-stopped
+    environment:
+      - RELAY_PORT=7777
+    ports:
+      - "7777:7777/tcp"
