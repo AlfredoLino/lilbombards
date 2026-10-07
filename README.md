@@ -21,9 +21,91 @@ y todas las mecánicas centrales de BombSquad.
    (si no lo hace: menú **LilBombards → Configurar proyecto**).
 4. Abre `Assets/Scenes/Main.unity` y pulsa **Play**. Todo el mundo (mapa, luces, cámara, HUD, sonidos) se genera por código.
 
-### Generar el ejecutable de Windows
+### Generar el ejecutable de Windows (.exe)
 
-Menú **LilBombards → Compilar para Windows (x64)** → `Builds/Windows/LilBombards.exe`.
+#### 0. Antes de empezar (solo la primera vez)
+
+1. Comprueba que tu Unity tiene el soporte para compilar en Windows:
+   **Unity Hub → Installs →** engranaje de tu versión (6000.x) **→ Add modules**.
+   - **Windows Build Support (Mono)** ya viene incluido con el editor de Windows. Con eso es suficiente.
+   - **Windows Build Support (IL2CPP)** es opcional: hace el juego un poco más rápido, pero además necesita
+     Visual Studio con la carga de trabajo *"Desarrollo para el escritorio con C++"*. Si no sabes cuál usar, usa Mono.
+2. Abre el proyecto en Unity y espera a que termine de importar. Fíjate en la esquina inferior derecha:
+   no debe quedar ninguna barra de progreso girando.
+3. Abre la ventana **Console** (menú **Window → General → Console**) y comprueba que **no hay errores en rojo**.
+   Con errores de compilación Unity no puede generar el .exe.
+4. Si no existe `Assets/Scenes/Main.unity`, usa el menú **LilBombards → Configurar proyecto**.
+   Crea la escena, la añade a la compilación y ajusta nombre, versión, pantalla completa, etc.
+
+#### Opción A: con el menú del proyecto (recomendada)
+
+1. En la barra de menús de Unity: **LilBombards → Compilar para Windows (x64)**.
+2. Espera. La primera vez tarda varios minutos porque compila todos los shaders. Las siguientes son más rápidas.
+   Mientras compila verás una ventana con una barra de progreso.
+3. Al terminar se abre el Explorador en la carpeta del juego:
+
+   ```
+   lilbombards/Builds/Windows/
+     LilBombards.exe            <- el juego
+     LilBombards_Data/          <- datos (obligatoria)
+     UnityPlayer.dll            <- motor (obligatorio)
+     MonoBleedingEdge/          <- runtime de C# (obligatorio con Mono)
+     UnityCrashHandler64.exe
+     LilBombards_BurstDebugInformation_DoNotShip/   <- se puede borrar
+   ```
+
+4. En la Console aparece `[LilBombards] Build: Succeeded -> ...ruta...`. Si pone `Failed`, mira los errores en rojo
+   justo encima.
+
+#### Opción B: desde Build Profiles (lo estándar de Unity)
+
+1. **File → Build Profiles** (en Unity 6; en versiones anteriores se llama *Build Settings*).
+2. En la lista de la izquierda selecciona **Windows**. Si no es la plataforma activa, pulsa **Switch Platform**.
+3. En **Scene List** debe aparecer marcada `Assets/Scenes/Main.unity`. Si no, ábrela y pulsa **Add Open Scenes**.
+4. Architecture: **x86_64**. Deja *Development Build* **desmarcado** para la versión que vas a compartir.
+5. Pulsa **Build** y elige una carpeta **vacía**, por ejemplo `Builds/Windows`. No elijas la raíz del proyecto ni `Assets`.
+
+#### Probarlo
+
+- Doble clic en `LilBombards.exe`. Arranca en pantalla completa a 1920×1080 (o la resolución de tu monitor).
+  **Alt+Enter** alterna entre ventana y pantalla completa.
+- La primera vez Windows puede mostrar:
+  - **"Windows protegió su PC"** (SmartScreen), porque el .exe no está firmado: **Más información → Ejecutar de todas formas**.
+  - El aviso del **Firewall** al crear o unirte a una partida online: marca **Redes privadas** y pulsa **Permitir acceso**.
+- Para probar el online en una sola PC: abre el .exe y pulsa *Crear partida*. Luego abre **otra vez** el .exe
+  (o dale Play en el editor) y únete a `127.0.0.1`.
+
+#### Compartirlo con tus amigos
+
+- **No mandes solo el .exe**: necesita la carpeta `LilBombards_Data`, `UnityPlayer.dll`, etc.
+  Comprime **toda** la carpeta `Builds/Windows` (clic derecho → *Comprimir en archivo ZIP*). Puedes borrar antes
+  `LilBombards_BurstDebugInformation_DoNotShip`.
+- Quien lo reciba solo tiene que descomprimir el ZIP en una carpeta y abrir `LilBombards.exe`. No necesita instalar Unity.
+- Para jugar online todos deben tener **la misma versión** (sale en el panel ONLINE, p. ej. `v0.1.0`).
+- La carpeta `Builds/` está en `.gitignore`: el .exe **no** se sube al repositorio. Para publicarlo en GitHub usa
+  **Releases**:
+  1. En la página del repositorio: **Releases → Draft a new release** (o *Create a new release*).
+  2. *Choose a tag*: `v0.1.0` (ya existe). Título: `Lil Bombards v0.1.0`.
+  3. Arrastra el ZIP a *Attach binaries* y pulsa **Publish release**.
+
+#### Al sacar una versión nueva
+
+1. Sube la versión en `Assets/Scripts/Net/Net.cs` (`GameVersion = "0.2.0"`). Si cambias lo que se envía por red,
+   sube también `Protocol`. Así no se mezclan versiones distintas en una partida.
+2. Ejecuta **LilBombards → Configurar proyecto** para copiar la versión al Player, y compila de nuevo.
+3. `git commit`, `git tag -a v0.2.0 -m "v0.2.0"`, `git push --tags` y crea la Release con el nuevo ZIP.
+
+#### Problemas comunes
+
+| Síntoma | Solución |
+|---|---|
+| No aparece el menú **LilBombards** | Hay errores de compilación: revisa la Console y corrígelos (o mándamelos). |
+| "Build failed" / "Scripts have compiler errors" | Igual: errores en rojo en la Console. |
+| "No Windows build module installed" o falta la plataforma Windows | Instala *Windows Build Support* desde Unity Hub (paso 0). |
+| Error de IL2CPP o de Visual Studio | Usa Mono: **Edit → Project Settings → Player → Other Settings → Scripting Backend = Mono**. |
+| El juego abre en negro o rosa | Recompila tras **LilBombards → Configurar proyecto**. Los shaders deben estar en `Assets/Resources/Shaders`. |
+| Los amigos no pueden conectarse | Revisa la sección [Online](#online) (firewall, misma red/VPN o puerto 7777 abierto, misma versión). |
+| Se borró la carpeta `Library/` | Es normal: Unity la regenera al abrir el proyecto (tarda unos minutos). |
 
 ### Modelos de Blender (opcional, mejora el aspecto)
 
