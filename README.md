@@ -6,6 +6,20 @@ y todas las mecánicas centrales de BombSquad.
 
 > Nombre, código y arte son originales. No se usa ningún asset ni marca de BombSquad.
 
+## Descargar y jugar (sin Unity)
+
+1. Ve a **[Releases](https://github.com/AlfredoLino/lilbombards/releases/latest)** y descarga el ZIP
+   (`LilBombards-v0.1.0-Windows.zip`).
+2. Descomprímelo en una carpeta (clic derecho → *Extraer todo*). No lo abras desde dentro del ZIP.
+3. Abre `LilBombards.exe`. Si sale "Windows protegió su PC": **Más información → Ejecutar de todas formas**.
+4. Para jugar online con amigos, mira la sección [Online](#online).
+
+Requisitos: Windows 10/11 de 64 bits y una tarjeta gráfica con DirectX 11.
+
+---
+
+El resto de este documento es para **desarrollar** el juego (abrir el proyecto en Unity, compilar, etc.).
+
 ## Requisitos
 
 | Herramienta | Versión |
