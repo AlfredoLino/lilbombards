@@ -1,0 +1,129 @@
+# Lil Bombards — v0.1.0
+
+Clon de **BombSquad** para Windows hecho con **Unity** (Built-in Render Pipeline) y **Blender**.
+Esta es la base: el modo *Todos contra todos* (Deathmatch) con bots, multijugador local, **online**
+y todas las mecánicas centrales de BombSquad.
+
+> Nombre, código y arte son originales. No se usa ningún asset ni marca de BombSquad.
+
+## Requisitos
+
+| Herramienta | Versión |
+|---|---|
+| Unity Hub + **Unity 6 LTS** (6000.x) | con el módulo *Windows Build Support (IL2CPP o Mono)* |
+| Blender (opcional) | 4.x |
+
+## Puesta en marcha
+
+1. Unity Hub → **Add → Add project from disk** → elige esta carpeta (`lilbombards`) y la versión de Unity 6 instalada.
+2. Al abrir, Unity instala los paquetes. Si pregunta por el **nuevo Input System** ("enable the new input backends?") responde **Yes** (se reinicia el editor).
+3. El script de editor crea automáticamente `Assets/Scenes/Main.unity` y la añade al build
+   (si no lo hace: menú **LilBombards → Configurar proyecto**).
+4. Abre `Assets/Scenes/Main.unity` y pulsa **Play**. Todo el mundo (mapa, luces, cámara, HUD, sonidos) se genera por código.
+
+### Generar el ejecutable de Windows
+
+Menú **LilBombards → Compilar para Windows (x64)** → `Builds/Windows/LilBombards.exe`.
+
+### Modelos de Blender (opcional, mejora el aspecto)
+
+El juego funciona sin modelos (usa primitivas de Unity). Para generar los modelos de Blender:
+
+```
+"C:\Program Files\Blender Foundation\Blender 4.x\blender.exe" --background --python Blender/generate_assets.py
+```
+
+Esto exporta FBX a `Assets/Resources/Models/` (cabeza, torso, pelvis, mano, zapato, bomba, mina, caja de powerup, TNT)
+y guarda `Blender/lilbombards_assets.blend` para editarlos. Unity los detecta solos al volver al editor.
+Convenciones: frente del objeto hacia **-Y** en Blender, un objeto por archivo; la escala la normaliza el juego.
+
+## Controles
+
+En la sala de espera, pulsa cualquier botón de acción para unirte. **ENTER / START** empieza la partida.
+
+| Acción | Teclado 1 | Teclado 2 | Mando (Xbox) |
+|---|---|---|---|
+| Mover | WASD | Flechas | Stick izq. / cruceta |
+| Saltar | Espacio | Num0 / Ctrl der. | A |
+| Golpe | **Clic derecho** | Num1 / `,` | X |
+| Bomba | **Clic izq.**: 1er clic la saca (la mecha empieza a arder); 2o clic mantener = cargar fuerza, soltar = lanzar hacia el puntero | Num2 / `.` (mantener = cargar, soltar = lanzar) | B (igual) |
+| Agarrar / lanzar lo agarrado (mantener = cargar) | **Clic central** (rueda) | Num3 / `/` | Y |
+| Correr (gasta estamina) | Shift izq. | Shift der. | Gatillos / hombros |
+
+Sala de espera: `-`/`+` (o LB/RB) número de bots · RePág/AvPág (o cruceta) eliminaciones para ganar · ESC salir.
+En partida: ESC vuelve a la sala.
+
+## Online
+
+En la sala de espera hay un panel **ONLINE** arriba a la derecha.
+
+- **Crear partida**: tu juego pasa a ser el anfitrión (puerto **TCP 7777**). El panel muestra tus IPs locales.
+  Tú juegas normal (con teclado/mando, bots, etc.) y empiezas la partida con ENTER cuando estén todos.
+- **Unirse**: escribe tu nombre y la IP del anfitrión y pulsa *Unirse*. Juegas con teclado+ratón o mando.
+  Puedes entrar también a mitad de partida. ESC (o *Desconectar*) te saca.
+- La primera vez Windows preguntará si permites el acceso a la red: acepta (al menos redes privadas).
+
+Cómo conectarse según el caso:
+
+| Situación | Qué hacer |
+|---|---|
+| Misma casa / misma red | Usa la IP local del anfitrión (`192.168.x.x`). |
+| Por Internet, sin tocar el router | Instalad todos una VPN de juego (**Tailscale**, **ZeroTier** o **Radmin VPN**) y usad la IP que os da. |
+| Por Internet, con el router | El anfitrión redirige el puerto **TCP 7777** a su PC y comparte su IP pública. |
+
+Funcionamiento: el anfitrión simula todo (física, bots, daño, desmembramiento) y envía ~30 instantáneas por
+segundo; los clientes solo mandan sus controles y dibujan el mundo recibido. Los trozos que saltan del cuerpo
+se calculan con la misma semilla en todos los equipos. Todos deben usar la **misma versión** del juego.
+Código en `Assets/Scripts/Net/`.
+
+## Qué incluye (fiel a BombSquad)
+
+- **Personaje**: cabeza grande, manos y pies flotantes con física de muelles; corre (mantener cualquier botón), salta,
+  golpea alternando manos (el daño crece con la velocidad), agarra y lanza bombas, cajas y **otros jugadores**.
+- **K.O. tipo muñeco de trapo** al recibir golpes fuertes o explosiones; se levanta solo.
+- **Daño por porcentaje (estilo Smash Bros)**: golpes y explosiones suman %; cuanto más % tienes, más lejos te lanzan y más cuesta soltarse de un agarre. Solo se muere al caer de la plataforma (el crédito es para el último que te golpeó).
+- **Daño por trozos en capas**: cada pieza del cuerpo (casco ~100 trozos, peto ~70, cara ~60...) se divide en trozos orgánicos en sus 4 capas (armadura/ropa → piel → músculo → hueso). Cada explosión daña solo los trozos expuestos que miran hacia ella, según su orientación real y distancia; al romperse salen volando con su forma exacta y dejan ver la capa de debajo justo en ese sitio. Hollín y grietas se pintan por vértice. El hueso no se rompe, se chamusca. Modelos: `Blender/generate_body.py`; lógica: `BodyDamage.cs`.
+- **Desmembramiento** (solo bombas, por el lado de la explosión; más fácil si las capas están destrozadas; pisar una mina arranca un pie): cada extremidad en 2 partes. Sin mano: lanza más cerca y tarda en sacar la bomba; sin brazo: el doble y no puede agarrar jugadores; sin brazos: no lanza, ni agarra, ni golpea. Sin pie: cojea; sin pierna: a gatas, sin saltar y quieto al lanzar; sin piernas: se arrastra con las manos. Sin ninguna extremidad: muere despedazado. Todo lo cortado queda en el campo (`CharacterLimbs.cs`).
+- **Estamina** (100%): saltar 10%, correr 50%/s (2 s de sprint), golpear 8%, lanzar hasta 50% según la distancia (con poca estamina no puedes lanzar lejos), moverse con alguien agarrado 50%/s (agarrar impide recuperarla). Al agotarse caes de cansancio 0,5–2 s según tu %. Se recupera 30%/s.
+- **Bombas**: normal (mecha), **hielo** (congela; los congelados se rompen al siguiente golpe), **pegajosa**, **impacto**,
+  **minas** (se arman al tocar el suelo). Detonación en cadena. Máximo de bombas simultáneas (1, o 3 con Triple Bomba).
+- **TNT** que explota con radio ×1.45 y reaparece.
+- **Powerups** con las mismas probabilidades de BombSquad: Triple Bomba, Hielo, Pegajosas, Impacto, Minas,
+  Guantes de boxeo, Escudo (650 HP), Salud y **Maldición** (explotas a los 5 s).
+- **Mapa** "Puente de Bloques": bloques de juguete (madera y madera pintada) sobre columnas, mar de nubes debajo, rocas desenfocadas al fondo y barandas bajas. Caerse = morir. Cámara de ángulo fijo que sigue y hace zoom según la separación de los jugadores.
+- **Bots** que persiguen, golpean, lanzan bombas con predicción, huyen de explosiones, recogen powerups y tiran rivales por el borde.
+- Multijugador local (hasta 8: 2 teclados + mandos) y online (anfitrión + clientes), unirse en mitad de la partida.
+- Efectos: bolas de fuego, chispas, humo, onda expansiva, marcas de quemado, temblor de cámara, cámara lenta al ganar.
+- Sonidos sintetizados por código (sustituibles por archivos propios en `Sfx.cs`).
+
+## Estructura
+
+```
+Assets/
+  Scripts/
+    Core/       GameManager (flujo y reglas), Tuning (todas las constantes), PlayerSlot
+    Input/      Teclado x2, mandos, menús (Input System nuevo o clásico)
+    Character/  LBCharacter (física y combate), CharacterVisual (cuerpo y animación), BotBrain (IA)
+    Combat/     Bomb, Blast (explosiones), TntBox, PowerupBox, Pickupable
+    World/      Arena (mapa procedural, luz, cielo, agua), CameraRig
+    FX/         FX (partículas y efectos), Sfx (audio procedural)
+    UI/         HUD (marcador, paneles de daño con silueta, mensajes)
+    Net/        Online: Net (eventos), NetHost, NetClient, NetSnapshot, NetMenu
+    Util/       Gfx (materiales/texturas/modelos), MeshBuilder, Compat (API Unity 2021–6)
+  Resources/Shaders/  LB/Toon (plástico brillante), Unlit, Particle, Shield, Sky, Water
+  Resources/Models/   FBX exportados desde Blender
+  Resources/Fonts/    Luckiest Guy (Apache 2.0)
+  Editor/LBSetup.cs   Escena, build de Windows e importación de modelos
+Blender/generate_assets.py
+```
+
+Para ajustar la sensación de juego, casi todo está en `Assets/Scripts/Core/Tuning.cs`.
+
+## Próximos pasos sugeridos
+
+- Más modos: Eliminación, Rey de la Colina, Captura la Bandera, Fútbol, Onslaught (cooperativo por oleadas), Runaround.
+- Más mapas (Rampage, Bridgit, Doom Shroom, Football Stadium…) y selección de mapa.
+- Selección de personaje/color en la sala, más personajes.
+- Equipos, menú principal, opciones (volumen, pantalla), sonido y música con archivos reales.
+- Ragdoll completo con articulaciones.
+- Online: predicción en el cliente para reducir la sensación de latencia, lista de servidores.
