@@ -17,14 +17,14 @@ namespace LB
 
         public const int Port = 7777;
         public const int Protocol = 1;
-        public const string GameVersion = "0.2.0";
+        public const string GameVersion = "0.2.1";
 
         /// <summary>
         /// Servidor de rele para las salas online (dominio o IP del VPS, opcionalmente con ":puerto").
         /// Ponlo aqui antes de compilar el .exe para que tus amigos no tengan que escribirlo.
         /// Cada jugador puede cambiarlo en el panel ONLINE.
         /// </summary>
-        public const string DefaultServer = "https://dokploy.aayin.dev";
+        public const string DefaultServer = "193.160.119.110";
 
         public static Mode Current = Mode.Offline;
         public static bool IsHost => Current == Mode.Host;
