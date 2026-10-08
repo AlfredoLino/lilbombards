@@ -12,49 +12,93 @@ namespace LB
     {
         Hello = 1,      // cliente -> anfitrion: protocolo, version, nombre
         Input = 2,      // cliente -> anfitrion: controles
+        Ping = 3,       // cliente -> anfitrion: marca de tiempo + su ultimo ping medido
         Welcome = 10,   // anfitrion -> cliente: tu id
         Reject = 11,    // anfitrion -> cliente: motivo
         Snapshot = 12,  // anfitrion -> cliente: estado del mundo + eventos
+        Pong = 13,      // anfitrion -> cliente: devuelve la marca de tiempo
     }
 
     /// <summary>Canal con un jugador remoto: conexion directa o a traves del servidor de rele.</summary>
     public interface IPeerLink
     {
         bool Dead { get; set; }
+        /// <summary>Bytes pendientes de enviar (si la conexion va atascada, se saltan instantaneas).</summary>
+        int Backlog { get; }
         List<byte[]> Poll();
         void Send(MemoryStream ms);
         void Close();
     }
 
-    /// <summary>Conexion TCP con mensajes delimitados por longitud (sin hilos: se sondea cada frame).</summary>
+    /// <summary>
+    /// Conexion TCP con mensajes delimitados por longitud. Sin hilos y SIN BLOQUEAR: lo que no cabe en el
+    /// socket se guarda y se envia en el siguiente frame, asi una conexion lenta nunca congela el juego.
+    /// </summary>
     public class NetConn : IPeerLink
     {
         public readonly TcpClient Tcp;
-        readonly NetworkStream stream;
+        readonly Socket sock;
         byte[] buf = new byte[1 << 16];
         int len;
+        byte[] outBuf = new byte[1 << 16];
+        int outStart, outLen;
+        const int MaxBacklog = 4 * 1024 * 1024;
         public bool Dead { get; set; }
+        public int Backlog => outLen;
 
         public NetConn(TcpClient tcp)
         {
             Tcp = tcp;
             Tcp.NoDelay = true;
-            stream = tcp.GetStream();
-            stream.WriteTimeout = 3000;
+            sock = tcp.Client;
+            sock.Blocking = false;
         }
 
         public void Send(byte[] payload, int count)
         {
             if (Dead) return;
+            if (outLen + count + 4 > MaxBacklog)
+            {
+                Dead = true; // el otro lado no recibe nada desde hace mucho
+                return;
+            }
+            // Compactar y crecer el bufer de salida si hace falta.
+            if (outStart > 0 && outStart + outLen + count + 4 > outBuf.Length)
+            {
+                Buffer.BlockCopy(outBuf, outStart, outBuf, 0, outLen);
+                outStart = 0;
+            }
+            if (outLen + count + 4 > outBuf.Length)
+            {
+                var nb = new byte[Math.Max(outBuf.Length * 2, outLen + count + 4)];
+                Buffer.BlockCopy(outBuf, outStart, nb, 0, outLen);
+                outBuf = nb;
+                outStart = 0;
+            }
+            int p = outStart + outLen;
+            outBuf[p] = (byte)count;
+            outBuf[p + 1] = (byte)(count >> 8);
+            outBuf[p + 2] = (byte)(count >> 16);
+            outBuf[p + 3] = (byte)(count >> 24);
+            Buffer.BlockCopy(payload, 0, outBuf, p + 4, count);
+            outLen += count + 4;
+            Flush();
+        }
+
+        public void Send(MemoryStream ms) => Send(ms.GetBuffer(), (int)ms.Length);
+
+        /// <summary>Envia todo lo que el socket acepte ahora mismo, sin esperar.</summary>
+        public void Flush()
+        {
+            if (Dead || outLen == 0) return;
             try
             {
-                var frame = new byte[count + 4];
-                frame[0] = (byte)count;
-                frame[1] = (byte)(count >> 8);
-                frame[2] = (byte)(count >> 16);
-                frame[3] = (byte)(count >> 24);
-                Buffer.BlockCopy(payload, 0, frame, 4, count);
-                stream.Write(frame, 0, frame.Length);
+                int n = sock.Send(outBuf, outStart, outLen, SocketFlags.None, out SocketError err);
+                if (err == SocketError.WouldBlock || err == SocketError.NoBufferSpaceAvailable) n = 0;
+                else if (err != SocketError.Success) { Dead = true; return; }
+                outStart += n;
+                outLen -= n;
+                if (outLen == 0) outStart = 0;
             }
             catch (Exception)
             {
@@ -62,25 +106,22 @@ namespace LB
             }
         }
 
-        public void Send(MemoryStream ms) => Send(ms.GetBuffer(), (int)ms.Length);
-
         /// <summary>Lee lo disponible y devuelve los mensajes completos.</summary>
         public List<byte[]> Poll()
         {
             var msgs = new List<byte[]>();
             if (Dead) return msgs;
+            Flush();
             try
             {
-                if (!Tcp.Connected) { Dead = true; return msgs; }
-                while (Tcp.Available > 0)
+                while (true)
                 {
-                    if (buf.Length - len < Tcp.Available) Array.Resize(ref buf, Math.Max(buf.Length * 2, len + Tcp.Available));
-                    int n = stream.Read(buf, len, buf.Length - len);
-                    if (n <= 0) { Dead = true; break; }
+                    if (buf.Length - len < 4096) Array.Resize(ref buf, buf.Length * 2);
+                    int n = sock.Receive(buf, len, buf.Length - len, SocketFlags.None, out SocketError err);
+                    if (err == SocketError.WouldBlock) break;
+                    if (err != SocketError.Success || n <= 0) { Dead = true; break; } // 0 = el otro lado cerro
                     len += n;
                 }
-                // Detectar cierre por el otro lado.
-                if (Tcp.Client.Poll(0, SelectMode.SelectRead) && Tcp.Available == 0) Dead = true;
             }
             catch (Exception)
             {
@@ -107,7 +148,9 @@ namespace LB
 
         public void Close()
         {
+            if (!Dead) Flush(); // lo ultimo (p. ej. el motivo de un rechazo)
             Dead = true;
+            try { sock.Shutdown(SocketShutdown.Both); } catch (Exception) { }
             try { Tcp.Close(); } catch (Exception) { }
         }
     }
@@ -156,6 +199,8 @@ namespace LB
             public string Name = "?";
             public readonly RemoteInput Input = new RemoteInput();
             public bool Joined;
+            /// <summary>Ping que mide el propio cliente (ms), para mostrarlo a todos.</summary>
+            public int Ping;
         }
 
         TcpListener listener;
@@ -163,6 +208,9 @@ namespace LB
         int nextPeerId = 1;
         float snapTimer;
         public string Status = "";
+        /// <summary>Instantaneas por segundo.</summary>
+        public const float SnapshotRate = 30f;
+        const int SkipBacklog = 24 * 1024;
 
         // Modo sala online (a traves del servidor de rele).
         TcpClient relayTcp;
@@ -170,6 +218,8 @@ namespace LB
         NetConn relay;
         string relayHost;
         float beatTimer;
+        /// <summary>Ping entre el anfitrion y el servidor de rele (ms), -1 si no se sabe.</summary>
+        public int RelayPing = -1;
         /// <summary>Codigo de la sala online (null si es una partida en red local o aun no hay codigo).</summary>
         public string RoomCode;
         public bool UsesRelay => relayHost != null;
@@ -243,6 +293,13 @@ namespace LB
                             if (p.Conn is RelayPeer rp && rp.Id == id) rp.Left = true;
                         break;
                     }
+                    case 31:
+                    {
+                        float sent = r.ReadSingle();
+                        int ms = Mathf.RoundToInt((Time.realtimeSinceStartup - sent) * 1000f);
+                        RelayPing = RelayPing < 0 ? ms : Mathf.RoundToInt(Mathf.Lerp(RelayPing, ms, 0.3f));
+                        break;
+                    }
                     case 12:
                     {
                         int id = r.ReadInt32();
@@ -263,8 +320,12 @@ namespace LB
             beatTimer -= Time.unscaledDeltaTime;
             if (beatTimer <= 0f)
             {
-                beatTimer = 5f;
-                relay.Send(new byte[] { 30 }, 1);
+                // Latido con eco (cada segundo): mantiene viva la conexion y mide el ping con el servidor.
+                beatTimer = 1f;
+                var b = new byte[5];
+                b[0] = 31;
+                BitConverter.GetBytes(Time.realtimeSinceStartup).CopyTo(b, 1);
+                relay.Send(b, 5);
             }
             return true;
         }
@@ -282,6 +343,19 @@ namespace LB
             relay.Send(f, f.Length);
         }
 
+        /// <summary>Una sola copia para varios jugadores: el rele la reparte (ahorra subida al anfitrion).</summary>
+        void RelayBroadcast(List<int> ids, MemoryStream ms)
+        {
+            if (relay == null || ids.Count == 0) return;
+            int count = (int)ms.Length;
+            var f = new byte[2 + ids.Count * 4 + count];
+            f[0] = 22;
+            f[1] = (byte)ids.Count;
+            for (int i = 0; i < ids.Count; i++) BitConverter.GetBytes(ids[i]).CopyTo(f, 2 + i * 4);
+            Buffer.BlockCopy(ms.GetBuffer(), 0, f, 2 + ids.Count * 4, count);
+            relay.Send(f, f.Length);
+        }
+
         internal void RelayKick(int peer)
         {
             if (relay == null) return;
@@ -295,6 +369,7 @@ namespace LB
             public readonly int Id;
             public readonly List<byte[]> Inbox = new List<byte[]>();
             public bool Dead { get; set; }
+            public int Backlog => host.relay != null ? host.relay.Backlog : 0;
             bool closed, left;
 
             /// <summary>El rele avisa de que este jugador se fue.</summary>
@@ -392,17 +467,29 @@ namespace LB
             }
 
             // Instantanea del mundo + eventos.
+            // El temporizador se ACUMULA (antes se reiniciaba y a 60 FPS salian ~20 por segundo en vez de 30).
             snapTimer -= Time.unscaledDeltaTime;
             if (snapTimer <= 0f)
             {
-                snapTimer = 1f / 30f;
+                snapTimer = Mathf.Max(snapTimer + 1f / SnapshotRate, 0f);
                 var ms = new MemoryStream(4096);
                 var w = new BinaryWriter(ms);
                 w.Write((byte)Msg.Snapshot);
                 NetSnapshot.Write(w, this);
+                var relayIds = new List<int>();
                 foreach (var p in Peers)
-                    if (p.Joined) p.Conn.Send(ms);
+                {
+                    if (!p.Joined) continue;
+                    // Conexion atascada: mejor saltarse esta instantanea (la siguiente ya trae todo) que acumular retraso.
+                    if (p.Conn.Backlog > SkipBacklog) continue;
+                    if (p.Conn is RelayPeer rp) relayIds.Add(rp.Id);
+                    else p.Conn.Send(ms);
+                }
+                RelayBroadcast(relayIds, ms);
             }
+            foreach (var p in Peers)
+                if (p.Conn is NetConn nc) nc.Flush();
+            relay?.Flush();
         }
 
         void Handle(Peer p, byte[] m)
@@ -440,6 +527,17 @@ namespace LB
                 case Msg.Input:
                     if (p.Joined) p.Input.Apply(r);
                     break;
+                case Msg.Ping:
+                {
+                    float stamp = r.ReadSingle();
+                    p.Ping = r.ReadUInt16();
+                    var ms = new MemoryStream(8);
+                    var w = new BinaryWriter(ms);
+                    w.Write((byte)Msg.Pong);
+                    w.Write(stamp);
+                    p.Conn.Send(ms);
+                    break;
+                }
             }
         }
 

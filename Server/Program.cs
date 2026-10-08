@@ -12,6 +12,7 @@
 // Después:
 //   relé -> anfitrión  [10][int32 peer] se unió   [11][int32 peer] se fue   [12][int32 peer][datos] del peer
 //   anfitrión -> relé  [20][int32 peer][datos] al peer   [21][int32 peer] expulsar   [30] latido
+//                      [22][n][n x int32 peer][datos] la misma copia a varios   [31][datos] latido con eco (ping)
 //   cliente <-> relé   los datos del juego tal cual
 
 using System.Collections.Concurrent;
@@ -99,6 +100,20 @@ static class Program
                         peer.Send(data);
                         break;
                     }
+                    case 22 when m.Length >= 2:
+                    {
+                        // Difusion: [22][n][n x int32 peer][datos] -> la misma copia a varios jugadores.
+                        int count = m[1], head = 2 + count * 4;
+                        if (m.Length < head) break;
+                        var data = new byte[m.Length - head];
+                        Buffer.BlockCopy(m, head, data, 0, data.Length);
+                        for (int i = 0; i < count; i++)
+                            room.Get(BitConverter.ToInt32(m, 2 + i * 4))?.Send(data);
+                        break;
+                    }
+                    case 31:
+                        host.Send(m); // eco del latido: el anfitrion mide su ping con el servidor
+                        break;
                     case 21 when m.Length >= 5:
                     {
                         // Expulsar: primero se entrega lo pendiente (el motivo del rechazo) y luego se corta.

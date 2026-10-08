@@ -29,13 +29,14 @@ namespace LB
             {
                 w.Write(p.Index);
                 w.Write(p.Name ?? "");
-                w.WriteC(p.Color);
-                w.WriteC(p.Highlight);
+                w.WriteC32(p.Color);
+                w.WriteC32(p.Highlight);
                 w.Write(p.IsBot);
                 w.Write((short)p.Kills);
                 w.Write((short)p.Deaths);
                 w.Write(p.Character != null ? p.Character.NetId : 0);
                 w.Write(p.Device is NetHost.Peer peer ? peer.Id : 0);
+                w.Write((ushort)(p.Device is NetHost.Peer pp ? Mathf.Clamp(pp.Ping, 0, 65535) : 0));
             }
 
             w.Write((short)LBCharacter.All.Count);
@@ -43,8 +44,8 @@ namespace LB
             {
                 w.Write(c.NetId);
                 w.Write(c.Slot != null ? c.Slot.Index : -1);
-                w.WriteV(c.transform.position);
-                w.WriteQ(c.transform.rotation);
+                w.WriteVc(c.transform.position);
+                w.WriteQc(c.transform.rotation);
                 ushort f = 0;
                 if (c.Grounded) f |= FGrounded;
                 if (c.IsKO && !c.Dead) f |= FRagdoll;
@@ -79,8 +80,8 @@ namespace LB
             {
                 w.Write(b.NetId);
                 w.Write((byte)b.Type);
-                w.WriteV(b.transform.position);
-                w.WriteQ(b.transform.rotation);
+                w.WriteVc(b.transform.position);
+                w.WriteQc(b.transform.rotation);
                 w.Write(b.Lit);
                 w.WriteU8(b.FuseFraction);
                 w.Write(b.Armed);
@@ -91,16 +92,16 @@ namespace LB
             {
                 w.Write(p.NetId);
                 w.Write((byte)p.Type);
-                w.WriteV(p.transform.position);
-                w.WriteQ(p.transform.rotation);
+                w.WriteVc(p.transform.position);
+                w.WriteQc(p.transform.rotation);
             }
 
             w.Write((short)TntBox.All.Count);
             foreach (var t in TntBox.All)
             {
                 w.Write(t.NetId);
-                w.WriteV(t.transform.position);
-                w.WriteQ(t.transform.rotation);
+                w.WriteVc(t.transform.position);
+                w.WriteQc(t.transform.rotation);
             }
 
             var ev = Net.TakeEvents(out int count);
@@ -146,13 +147,14 @@ namespace LB
                     cl.Slots[index] = s;
                 }
                 s.Name = r.ReadString();
-                s.Color = r.ReadC();
-                s.Highlight = r.ReadC();
+                s.Color = r.ReadC32();
+                s.Highlight = r.ReadC32();
                 s.IsBot = r.ReadBoolean();
                 s.Kills = r.ReadInt16();
                 s.Deaths = r.ReadInt16();
                 r.ReadInt32(); // id del personaje (se enlaza al crearlo)
                 s.Device = r.ReadInt32();
+                s.Ping = r.ReadUInt16();
                 players.Add(s);
             }
             gm.ClientSetPlayers(players);
@@ -165,8 +167,8 @@ namespace LB
             {
                 int id = r.ReadInt32();
                 int slotIndex = r.ReadInt32();
-                Vector3 pos = r.ReadV();
-                Quaternion rot = r.ReadQ();
+                Vector3 pos = r.ReadVc();
+                Quaternion rot = r.ReadQc();
                 ushort f = r.ReadUInt16();
                 float punch = r.ReadSingle();
                 float charge = r.ReadSingle();
@@ -212,8 +214,8 @@ namespace LB
             {
                 int id = r.ReadInt32();
                 var type = (BombType)r.ReadByte();
-                Vector3 pos = r.ReadV();
-                Quaternion rot = r.ReadQ();
+                Vector3 pos = r.ReadVc();
+                Quaternion rot = r.ReadQc();
                 bool lit = r.ReadBoolean();
                 float fuse = r.ReadU8();
                 bool armed = r.ReadBoolean();
@@ -235,8 +237,8 @@ namespace LB
             {
                 int id = r.ReadInt32();
                 var type = (PowerupType)r.ReadByte();
-                Vector3 pos = r.ReadV();
-                Quaternion rot = r.ReadQ();
+                Vector3 pos = r.ReadVc();
+                Quaternion rot = r.ReadQc();
                 seen.Add(id);
                 if (!cl.Powerups.TryGetValue(id, out var p) || p == null)
                 {
@@ -254,8 +256,8 @@ namespace LB
             for (int i = 0; i < tc; i++)
             {
                 int id = r.ReadInt32();
-                Vector3 pos = r.ReadV();
-                Quaternion rot = r.ReadQ();
+                Vector3 pos = r.ReadVc();
+                Quaternion rot = r.ReadQc();
                 seen.Add(id);
                 if (!cl.Tnts.TryGetValue(id, out var t) || t == null)
                 {
@@ -298,12 +300,19 @@ namespace LB
         }
     }
 
-    /// <summary>Movimiento suave de las entidades espejo hacia su ultima posicion recibida.</summary>
+    /// <summary>
+    /// Movimiento suave de las entidades espejo. Estima la velocidad con las dos ultimas instantaneas y
+    /// adelanta la posicion el tiempo transcurrido desde la ultima (prediccion), para no ir siempre por detras.
+    /// </summary>
     public class NetSmooth : MonoBehaviour
     {
-        Vector3 pos;
+        Vector3 pos, vel;
         Quaternion rot;
+        float stamp;
         bool has;
+
+        /// <summary>Adelanto extra para el personaje propio (compensa parte del ping).</summary>
+        public float Lead;
 
         public static void Set(GameObject go, Vector3 p, Quaternion r)
         {
@@ -313,18 +322,33 @@ namespace LB
                 s = go.AddComponent<NetSmooth>();
                 go.transform.SetPositionAndRotation(p, r);
             }
+            float now = Time.unscaledTime;
+            if (s.has)
+            {
+                float dt = now - s.stamp;
+                if (dt > 0.005f)
+                {
+                    Vector3 v = (p - s.pos) / dt;
+                    // Teletransportes (reaparecer) no cuentan como velocidad.
+                    s.vel = v.sqrMagnitude > 900f ? Vector3.zero : Vector3.Lerp(s.vel, v, 0.6f);
+                }
+            }
             s.pos = p;
             s.rot = r;
+            s.stamp = now;
             s.has = true;
         }
 
         void Update()
         {
             if (!has) return;
-            float k = 1f - Mathf.Exp(-18f * Time.unscaledDeltaTime);
+            // Prediccion acotada: como mucho 0.15 s hacia delante (si no llegan instantaneas, se para).
+            float ahead = Mathf.Min(Time.unscaledTime - stamp + Lead, 0.15f);
+            Vector3 target = pos + vel * ahead;
+            float k = 1f - Mathf.Exp(-30f * Time.unscaledDeltaTime);
             // Saltos grandes (reaparecer, teletransporte): sin suavizado.
-            if ((transform.position - pos).sqrMagnitude > 9f) transform.position = pos;
-            else transform.position = Vector3.Lerp(transform.position, pos, k);
+            if ((transform.position - target).sqrMagnitude > 9f) transform.position = target;
+            else transform.position = Vector3.Lerp(transform.position, target, k);
             transform.rotation = Quaternion.Slerp(transform.rotation, rot, k);
         }
     }

@@ -16,8 +16,8 @@ namespace LB
         public enum Mode { Offline, Host, Client }
 
         public const int Port = 7777;
-        public const int Protocol = 2;
-        public const string GameVersion = "0.3.0";
+        public const int Protocol = 3;
+        public const string GameVersion = "0.3.1";
 
         /// <summary>
         /// Servidor de rele para las salas online (dominio o IP del VPS, opcionalmente con ":puerto").
@@ -315,6 +315,38 @@ namespace LB
         public static Quaternion ReadQ(this BinaryReader r) => new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
         public static void WriteC(this BinaryWriter w, Color c) { w.Write(c.r); w.Write(c.g); w.Write(c.b); w.Write(c.a); }
         public static Color ReadC(this BinaryReader r) => new Color(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+        /// <summary>Color en 4 bytes.</summary>
+        public static void WriteC32(this BinaryWriter w, Color c)
+        {
+            Color32 k = c;
+            w.Write(k.r); w.Write(k.g); w.Write(k.b); w.Write(k.a);
+        }
+        public static Color ReadC32(this BinaryReader r) => new Color32(r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte());
+
+        /// <summary>Posicion en centimetros (3 x 16 bits, +-327 m).</summary>
+        public static void WriteVc(this BinaryWriter w, Vector3 v)
+        {
+            w.Write((short)Mathf.Clamp(Mathf.RoundToInt(v.x * 100f), -32767, 32767));
+            w.Write((short)Mathf.Clamp(Mathf.RoundToInt(v.y * 100f), -32767, 32767));
+            w.Write((short)Mathf.Clamp(Mathf.RoundToInt(v.z * 100f), -32767, 32767));
+        }
+        public static Vector3 ReadVc(this BinaryReader r) => new Vector3(r.ReadInt16() * 0.01f, r.ReadInt16() * 0.01f, r.ReadInt16() * 0.01f);
+
+        /// <summary>Giro con 16 bits por componente.</summary>
+        public static void WriteQc(this BinaryWriter w, Quaternion q)
+        {
+            w.Write((short)Mathf.RoundToInt(Mathf.Clamp(q.x, -1f, 1f) * 32767f));
+            w.Write((short)Mathf.RoundToInt(Mathf.Clamp(q.y, -1f, 1f) * 32767f));
+            w.Write((short)Mathf.RoundToInt(Mathf.Clamp(q.z, -1f, 1f) * 32767f));
+            w.Write((short)Mathf.RoundToInt(Mathf.Clamp(q.w, -1f, 1f) * 32767f));
+        }
+        public static Quaternion ReadQc(this BinaryReader r)
+        {
+            var q = new Quaternion(r.ReadInt16() / 32767f, r.ReadInt16() / 32767f, r.ReadInt16() / 32767f, r.ReadInt16() / 32767f);
+            float m = Mathf.Sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+            return m > 1e-4f ? new Quaternion(q.x / m, q.y / m, q.z / m, q.w / m) : Quaternion.identity;
+        }
+
         public static void WriteU8(this BinaryWriter w, float v01) { w.Write((byte)Mathf.Clamp(Mathf.RoundToInt(v01 * 254f), 0, 254)); }
         public static float ReadU8(this BinaryReader r) => r.ReadByte() / 254f;
     }

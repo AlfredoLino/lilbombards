@@ -174,6 +174,12 @@ En la sala de espera hay un panel **ONLINE** arriba a la derecha.
 - También funciona por Internet abriendo el puerto TCP 7777 en el router, o con una VPN tipo Tailscale/Radmin,
   pero con las salas con código no hace falta.
 
+**Ping en pantalla** (esquina inferior derecha, en verde < 80 ms, amarillo < 150 ms, rojo más):
+el cliente ve su ping con el anfitrión; el anfitrión ve su ping con el servidor y el de cada jugador.
+Con salas por código el camino es *jugador → servidor → anfitrión*, así que el ping de un cliente es
+aproximadamente *su ping al servidor + el del anfitrión al servidor*: conviene un VPS cercano a todos
+(misma región/país) y que el anfitrión sea quien tenga mejor conexión (mejor por cable que por WiFi).
+
 Funcionamiento: el anfitrión simula todo (física, bots, daño, desmembramiento) y envía ~30 instantáneas por
 segundo; los clientes solo mandan sus controles y dibujan el mundo recibido. Los trozos que saltan del cuerpo
 se calculan con la misma semilla en todos los equipos. Todos deben usar la **misma versión** del juego.
@@ -209,6 +215,10 @@ Escucha en el puerto **TCP 7777**.
 
 Alternativa sin Compose: **Create Service → Application**, *Build Type* **Dockerfile**, *Docker File* `Dockerfile`,
 *Docker Context Path* `Server`, y en **Advanced → Ports** publica `7777` → `7777` (TCP).
+
+**Al actualizar el juego, redespliega primero el servidor** (Dokploy → *Deploy*): las versiones nuevas
+pueden usar mensajes que el servidor antiguo no entiende (p. ej. la v0.3.1 envía una sola copia de cada
+instantánea y el servidor la reparte; con el servidor antiguo los clientes no verían nada).
 
 Límites del servidor (en `Server/Program.cs`): 500 salas, 16 jugadores por sala. Las salas se cierran solas cuando
 el anfitrión se va.

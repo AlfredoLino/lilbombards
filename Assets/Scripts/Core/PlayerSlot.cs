@@ -16,6 +16,8 @@ namespace LB
         public int Deaths;
         public LBCharacter Character;
         public float RespawnAt = -1f;
+        /// <summary>Ping online en ms (0 = local / anfitrion).</summary>
+        public int Ping;
 
         public bool Alive => Character != null && !Character.Dead;
 

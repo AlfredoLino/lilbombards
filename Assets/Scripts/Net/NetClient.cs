@@ -31,6 +31,9 @@ namespace LB
         readonly byte[] counts = new byte[4];
         InputState prev;
         float sendTimer;
+        float pingTimer;
+        /// <summary>Ping con el anfitrion en ms (ida y vuelta), -1 mientras no se sabe.</summary>
+        public int Ping = -1;
 
         // Entidades espejo por id de red.
         public readonly Dictionary<int, LBCharacter> Chars = new Dictionary<int, LBCharacter>();
@@ -126,6 +129,12 @@ namespace LB
                     case Msg.Snapshot:
                         NetSnapshot.Apply(r, this);
                         break;
+                    case Msg.Pong:
+                    {
+                        int ms = Mathf.RoundToInt((Time.realtimeSinceStartup - r.ReadSingle()) * 1000f);
+                        Ping = Ping < 0 ? ms : Mathf.RoundToInt(Mathf.Lerp(Ping, ms, 0.25f));
+                        break;
+                    }
                 }
             }
             if (conn.Dead)
@@ -135,6 +144,22 @@ namespace LB
             }
 
             SendInput();
+            SendPing();
+            conn.Flush();
+        }
+
+        void SendPing()
+        {
+            if (MyId <= 0) return;
+            pingTimer -= Time.unscaledDeltaTime;
+            if (pingTimer > 0f) return;
+            pingTimer = 0.5f;
+            var ms = new MemoryStream(8);
+            var w = new BinaryWriter(ms);
+            w.Write((byte)Msg.Ping);
+            w.Write(Time.realtimeSinceStartup);
+            w.Write((ushort)Mathf.Clamp(Ping, 0, 65535));
+            conn.Send(ms);
         }
 
         void SendHello()
@@ -194,7 +219,13 @@ namespace LB
 
             // El personaje propio espejo usa la punteria local (mira del raton).
             var me = MyCharacter();
-            if (me != null) me.Cur = s;
+            if (me != null)
+            {
+                me.Cur = s;
+                // El personaje propio se adelanta media latencia (mas reactivo), con tope para no pasarse.
+                var sm = me.GetComponent<NetSmooth>();
+                if (sm != null) sm.Lead = Mathf.Clamp(Ping, 0, 160) / 2000f;
+            }
 
             sendTimer -= Time.unscaledDeltaTime;
             if (!changed && sendTimer > 0f) return;

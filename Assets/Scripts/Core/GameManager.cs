@@ -63,6 +63,7 @@ namespace LB
             CameraRig.Create();
             HUD.Create();
             gameObject.AddComponent<NetMenu>();
+            gameObject.AddComponent<NetStats>();
             LBCharacter.Died += OnDied;
             EnterLobby();
         }
