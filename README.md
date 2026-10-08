@@ -146,7 +146,8 @@ En la sala de espera, pulsa cualquier botón de acción para unirte. **ENTER / S
 | Agarrar / lanzar lo agarrado (mantener = cargar) | **Clic central** (rueda) | Num3 / `/` | Y |
 | Correr (gasta estamina) | Shift izq. | Shift der. | Gatillos / hombros |
 
-Sala de espera: `-`/`+` (o LB/RB) número de bots · RePág/AvPág (o cruceta) eliminaciones para ganar · ESC salir.
+Sala de espera: `-`/`+` (o LB/RB) número de bots · RePág/AvPág (o cruceta arriba/abajo) eliminaciones para ganar ·
+**TAB** / Shift+TAB (o cruceta izquierda/derecha, o las flechas del panel *MAPA*) cambiar de mapa · ESC salir.
 En partida: ESC vuelve a la sala.
 
 ## Online
@@ -226,7 +227,15 @@ el anfitrión se va.
 - **TNT** que explota con radio ×1.45 y reaparece.
 - **Powerups** con las mismas probabilidades de BombSquad: Triple Bomba, Hielo, Pegajosas, Impacto, Minas,
   Guantes de boxeo, Escudo (650 HP), Salud y **Maldición** (explotas a los 5 s).
-- **Mapa** "Puente de Bloques": bloques de juguete (madera y madera pintada) sobre columnas, mar de nubes debajo, rocas desenfocadas al fondo y barandas bajas. Caerse = morir. Cámara de ángulo fijo que sigue y hace zoom según la separación de los jugadores.
+- **5 mapas** (se elige en la sala; el fondo cambia al momento para verlo):
+  - **Puente de Bloques**: bloques de juguete sobre un mar de nubes, con barandas altas.
+  - **Isla Tropical**: isla de hierba en el mar, con palmeras. Sin barandas.
+  - **Tres Islas**: tres plataformas unidas por puentes estrechos, al atardecer.
+  - **Coliseo de Lava**: arena cerrada por muros, de noche, con antorchas y un pozo de lava en el centro.
+  - **Cumbre Nevada**: cima nevada con pinos, bloques de hielo y un muñeco de nieve para cubrirse.
+
+  Caerse = morir. Cámara de ángulo fijo que sigue y hace zoom según la separación de los jugadores.
+  Los bots conocen los bordes de cada mapa, cruzan por los puentes y rodean el pozo.
 - **Bots** que persiguen, golpean, lanzan bombas con predicción, huyen de explosiones, recogen powerups y tiran rivales por el borde.
 - Multijugador local (hasta 8: 2 teclados + mandos) y online (anfitrión + clientes), unirse en mitad de la partida.
 - Efectos: bolas de fuego, chispas, humo, onda expansiva, marcas de quemado, temblor de cámara, cámara lenta al ganar.
@@ -241,7 +250,7 @@ Assets/
     Input/      Teclado x2, mandos, menús (Input System nuevo o clásico)
     Character/  LBCharacter (física y combate), CharacterVisual (cuerpo y animación), BotBrain (IA)
     Combat/     Bomb, Blast (explosiones), TntBox, PowerupBox, Pickupable
-    World/      Arena (mapa procedural, luz, cielo, agua), CameraRig
+    World/      Arena (los 5 mapas: suelo, decorado, luz, cielo, bordes para los bots), CameraRig
     FX/         FX (partículas y efectos), Sfx (audio procedural)
     UI/         HUD (marcador, paneles de daño con silueta, mensajes)
     Net/        Online: Net (eventos), NetHost, NetClient, NetSnapshot, NetMenu
@@ -259,7 +268,7 @@ Para ajustar la sensación de juego, casi todo está en `Assets/Scripts/Core/Tun
 ## Próximos pasos sugeridos
 
 - Más modos: Eliminación, Rey de la Colina, Captura la Bandera, Fútbol, Onslaught (cooperativo por oleadas), Runaround.
-- Más mapas (Rampage, Bridgit, Doom Shroom, Football Stadium…) y selección de mapa.
+- Más mapas y mapas con elementos móviles.
 - Selección de personaje/color en la sala, más personajes.
 - Equipos, menú principal, opciones (volumen, pantalla), sonido y música con archivos reales.
 - Ragdoll completo con articulaciones.

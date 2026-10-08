@@ -65,8 +65,11 @@ namespace LB
 
             float w = 380f * s, h = (Net.IsOnline ? (Net.IsHost && Net.Host.UsesRelay ? 270f : 210f) : 420f) * s;
             var rect = new Rect(Screen.width - w - 20f * s, 20f * s, w, h);
+            // Selector de mapa (arriba a la izquierda, solo en la sala).
+            bool lobby = GameManager.I.Phase == GamePhase.Lobby;
+            var mapRect = new Rect(20f * s, 20f * s, 420f * s, 118f * s);
             var e = Event.current;
-            bool over = rect.Contains(e.mousePosition);
+            bool over = rect.Contains(e.mousePosition) || lobby && mapRect.Contains(e.mousePosition);
             if (e.type == EventType.Repaint) Keys.MouseOverUI = over;
             // Clic fuera del panel: deja de escribir.
             if (e.type == EventType.MouseDown && !over) GUI.FocusControl(null);
@@ -146,7 +149,26 @@ namespace LB
             }
             GUILayout.EndArea();
 
+            if (lobby) MapPanel(mapRect, s);
+
             Keys.Blocked = GUIUtility.keyboardControl != 0;
+        }
+
+        void MapPanel(Rect rect, float s)
+        {
+            bool canChange = !Net.IsClient;
+            int map = Arena.I != null ? Arena.I.Map : 0;
+            GUILayout.BeginArea(rect, box);
+            GUILayout.Label("MAPA  <size=" + Mathf.RoundToInt(13 * s) + "><color=#AAAAAA>" + (map + 1) + "/" + Arena.MapCount +
+                            (canChange ? "   TAB / cruceta izq./der." : "   (lo elige el anfitrión)") + "</color></size>", label);
+            GUILayout.BeginHorizontal();
+            float bh = 34f * s;
+            if (canChange && GUILayout.Button("<", button, GUILayout.Width(44f * s), GUILayout.Height(bh))) GameManager.I.ChangeMap(-1);
+            GUILayout.Label("<size=" + Mathf.RoundToInt(24 * s) + "><color=#FFFFFF>" + Arena.MapNames[map] + "</color></size>", small, GUILayout.Height(bh));
+            if (canChange && GUILayout.Button(">", button, GUILayout.Width(44f * s), GUILayout.Height(bh))) GameManager.I.ChangeMap(1);
+            GUILayout.EndHorizontal();
+            GUILayout.Label(Arena.MapInfo[map], small);
+            GUILayout.EndArea();
         }
 
         void Join()

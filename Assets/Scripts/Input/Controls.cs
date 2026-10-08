@@ -344,11 +344,26 @@ namespace LB
             return d;
         }
 
+        /// <summary>Cambiar de mapa: TAB (Shift+TAB hacia atras) o cruceta izquierda/derecha.</summary>
+        public static int MapDelta()
+        {
+            int d = 0;
+            if (Keys.Down(K.Tab)) d = Keys.Held(K.LeftShift) || Keys.Held(K.RightShift) ? -1 : 1;
+#if ENABLE_INPUT_SYSTEM
+            foreach (var g in Gamepad.all)
+            {
+                if (g.dpad.right.wasPressedThisFrame) d++;
+                if (g.dpad.left.wasPressedThisFrame) d--;
+            }
+#endif
+            return d;
+        }
+
         public static int KillsDelta()
         {
             int d = 0;
 #if ENABLE_INPUT_SYSTEM
-            var kb = Keyboard.current;
+            var kb = Keys.Blocked ? null : Keyboard.current;
             if (kb != null)
             {
                 if (kb[Key.PageUp].wasPressedThisFrame) d++;
@@ -360,8 +375,8 @@ namespace LB
                 if (g.dpad.down.wasPressedThisFrame) d--;
             }
 #else
-            if (Input.GetKeyDown(KeyCode.PageUp)) d++;
-            if (Input.GetKeyDown(KeyCode.PageDown)) d--;
+            if (!Keys.Blocked && Input.GetKeyDown(KeyCode.PageUp)) d++;
+            if (!Keys.Blocked && Input.GetKeyDown(KeyCode.PageDown)) d--;
 #endif
             return d;
         }

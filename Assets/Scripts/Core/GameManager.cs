@@ -19,6 +19,8 @@ namespace LB
         public readonly List<PlayerSlot> Players = new List<PlayerSlot>();
         public int BotCount = 2;
         public int KillsToWin = Tuning.DefaultKillsToWin;
+        /// <summary>Mapa elegido en la sala (indice de Arena.MapNames).</summary>
+        public int MapIndex;
         /// <summary>Habilidad de los bots (0 = muy facil, 1 = dificil).</summary>
         public float BotSkill = 0.1f;
 
@@ -56,7 +58,8 @@ namespace LB
             if (RenderSettings.sun != null) RenderSettings.sun.gameObject.SetActive(false);
 
             Sfx.Init(transform);
-            Arena.Build();
+            MapIndex = Mathf.Clamp(PlayerPrefs.GetInt("lb_map", 0), 0, Arena.MapCount - 1);
+            Arena.Build(MapIndex);
             CameraRig.Create();
             HUD.Create();
             gameObject.AddComponent<NetMenu>();
@@ -95,6 +98,7 @@ namespace LB
             Phase = GamePhase.Lobby;
             Time.timeScale = 1f;
             ClearWorld();
+            if (Arena.I == null || Arena.I.Map != MapIndex) Arena.Build(MapIndex); // p. ej. al volver de la sala de otro
             Players.Clear();
             HUD.ClearFeed();
             HUD.Center("", "", 0f);
@@ -111,6 +115,8 @@ namespace LB
                 BotCount = Mathf.Clamp(BotCount + d, 0, 7);
                 Sfx.Play(Sfx.Pickup, 0.5f);
             }
+            int m = MenuInput.MapDelta();
+            if (m != 0) ChangeMap(m);
             int k = MenuInput.KillsDelta();
             if (k != 0)
             {
@@ -147,6 +153,16 @@ namespace LB
             RefreshLobbyText();
         }
 
+        /// <summary>Cambia el mapa de la sala (se ve al momento detras del menu).</summary>
+        public void ChangeMap(int delta)
+        {
+            if (Phase != GamePhase.Lobby || Net.IsClient) return;
+            MapIndex = ((MapIndex + delta) % Arena.MapCount + Arena.MapCount) % Arena.MapCount;
+            PlayerPrefs.SetInt("lb_map", MapIndex);
+            Arena.Build(MapIndex);
+            Sfx.Play(Sfx.Pickup, 0.5f);
+        }
+
         void RefreshLobbyText()
         {
             var sb = new System.Text.StringBuilder();
@@ -161,7 +177,8 @@ namespace LB
             sb.AppendLine("Bots: <color=#FFD23F>" + BotCount + "</color>" +
                           (BotCount == 0 ? "  <color=#7CFF6B>(modo práctica: sin rivales)</color>" : "") +
                           "   <size=26>( - / + | LB / RB )</size>");
-            sb.AppendLine("Eliminaciones para ganar: <color=#FFD23F>" + KillsToWin + "</color>   <size=26>( RePág / AvPág | cruceta )</size>");
+            sb.AppendLine("Eliminaciones para ganar: <color=#FFD23F>" + KillsToWin + "</color>   <size=26>( RePág / AvPág | cruceta arriba/abajo )</size>");
+            sb.AppendLine("Mapa: <color=#FFD23F>" + Arena.MapNames[MapIndex] + "</color>   <size=26>( TAB / Shift+TAB | cruceta izq./der. )</size>");
             sb.AppendLine();
             sb.AppendLine("<color=#7CFF6B>ENTER / START para empezar</color>   <size=26>ESC para " + (humans.Count > 0 ? "vaciar la sala" : "salir") + "</size>");
             if (Net.IsHost && Net.Host.UsesRelay)
@@ -266,8 +283,9 @@ namespace LB
         }
 
         /// <summary>Cliente: fase, meta de eliminaciones y camara lenta dictadas por el anfitrion.</summary>
-        public void ClientApplyState(GamePhase phase, int kills, float timeScale)
+        public void ClientApplyState(GamePhase phase, int kills, float timeScale, int map)
         {
+            if (Arena.I == null || Arena.I.Map != map) Arena.Build(map);
             if (phase != Phase)
             {
                 Phase = phase;
@@ -312,6 +330,7 @@ namespace LB
                 }
                 sb.AppendLine();
                 sb.AppendLine("Eliminaciones para ganar: <color=#FFD23F>" + KillsToWin + "</color>");
+                if (Arena.I != null) sb.AppendLine("Mapa: <color=#FFD23F>" + Arena.MapNames[Arena.I.Map] + "</color>");
                 sb.AppendLine();
                 sb.AppendLine("<color=#7CFF6B>Esperando a que el anfitrión empiece la partida...</color>");
             }

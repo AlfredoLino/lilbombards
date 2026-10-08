@@ -21,6 +21,7 @@ namespace LB
             w.Write((byte)gm.Phase);
             w.Write((short)gm.KillsToWin);
             w.Write(Time.timeScale);
+            w.Write((byte)(Arena.I != null ? Arena.I.Map : gm.MapIndex));
 
             var players = gm.VisiblePlayers;
             w.Write((byte)players.Count);
@@ -130,7 +131,8 @@ namespace LB
             var phase = (GamePhase)r.ReadByte();
             int kills = r.ReadInt16();
             float timeScale = r.ReadSingle();
-            gm.ClientApplyState(phase, kills, timeScale);
+            int map = r.ReadByte();
+            gm.ClientApplyState(phase, kills, timeScale, map);
 
             // --- Jugadores
             int pc = r.ReadByte();

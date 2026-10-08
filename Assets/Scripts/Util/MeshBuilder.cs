@@ -246,6 +246,94 @@ namespace LB
             return m;
         }
 
+        /// <summary>
+        /// Suelo con agujero: corona entre dos contornos con el mismo numero de puntos.
+        /// Cara superior (submesh 0), pared exterior hasta outerBottom y pared interior (el pozo) hasta innerBottom (submesh 1).
+        /// </summary>
+        public static Mesh Annulus(List<Vector2> outer, List<Vector2> inner, float topY, float outerBottom, float innerBottom, float uvTop)
+        {
+            var verts = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var top = new List<int>();
+            var side = new List<int>();
+            int n = outer.Count;
+
+            int o0 = verts.Count;
+            for (int i = 0; i < n; i++) { verts.Add(new Vector3(outer[i].x, topY, outer[i].y)); uvs.Add(outer[i] * uvTop); }
+            int i0 = verts.Count;
+            for (int i = 0; i < n; i++) { verts.Add(new Vector3(inner[i].x, topY, inner[i].y)); uvs.Add(inner[i] * uvTop); }
+            for (int i = 0; i < n; i++)
+            {
+                int j = (i + 1) % n;
+                AddTri(verts, top, o0 + i, o0 + j, i0 + j, Vector3.up);
+                AddTri(verts, top, o0 + i, i0 + j, i0 + i, Vector3.up);
+            }
+
+            Wall(verts, uvs, side, outer, topY, outerBottom, false);
+            Wall(verts, uvs, side, inner, topY, innerBottom, true);
+
+            var m = new Mesh { name = "Annulus" };
+            m.SetVertices(verts);
+            m.SetUVs(0, uvs);
+            m.subMeshCount = 2;
+            m.SetTriangles(top, 0);
+            m.SetTriangles(side, 1);
+            m.RecalculateNormals();
+            m.RecalculateBounds();
+            return m;
+        }
+
+        static void Wall(List<Vector3> verts, List<Vector2> uvs, List<int> tris, List<Vector2> ring, float y0, float y1, bool inward)
+        {
+            int n = ring.Count;
+            Vector2 c = Vector2.zero;
+            foreach (var p in ring) c += p;
+            c /= n;
+            float u = 0f;
+            int a = verts.Count;
+            for (int i = 0; i <= n; i++)
+            {
+                var p = ring[i % n];
+                if (i > 0) u += (p - ring[i - 1]).magnitude;
+                verts.Add(new Vector3(p.x, y0, p.y)); uvs.Add(new Vector2(u * 0.5f, y0 * 0.5f));
+                verts.Add(new Vector3(p.x, y1, p.y)); uvs.Add(new Vector2(u * 0.5f, y1 * 0.5f));
+            }
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 mid = (ring[i] + ring[(i + 1) % n]) * 0.5f - c;
+                Vector3 nrm = new Vector3(mid.x, 0f, mid.y).normalized * (inward ? -1f : 1f);
+                int k = a + i * 2;
+                AddTri(verts, tris, k, k + 2, k + 3, nrm);
+                AddTri(verts, tris, k, k + 3, k + 1, nrm);
+            }
+        }
+
+        /// <summary>Cono con base en y=0 y punta en y=height (copas de pino).</summary>
+        public static Mesh Cone(float radius, float height, int segs)
+        {
+            var verts = new List<Vector3>();
+            var tris = new List<int>();
+            for (int i = 0; i < segs; i++)
+            {
+                float a0 = i * Mathf.PI * 2f / segs, a1 = (i + 1) * Mathf.PI * 2f / segs;
+                Vector3 p0 = new Vector3(Mathf.Cos(a0) * radius, 0f, Mathf.Sin(a0) * radius);
+                Vector3 p1 = new Vector3(Mathf.Cos(a1) * radius, 0f, Mathf.Sin(a1) * radius);
+                Vector3 mid = (p0 + p1) * 0.5f;
+                int k = verts.Count;
+                verts.Add(p0); verts.Add(p1); verts.Add(new Vector3(0f, height, 0f));
+                AddTri(verts, tris, k, k + 1, k + 2, mid.normalized + Vector3.up * 0.3f);
+                k = verts.Count;
+                verts.Add(p0); verts.Add(p1); verts.Add(Vector3.zero);
+                AddTri(verts, tris, k, k + 1, k + 2, Vector3.down);
+            }
+            var m = new Mesh { name = "Cone" };
+            m.SetVertices(verts);
+            m.SetTriangles(tris, 0);
+            m.RecalculateNormals();
+            m.RecalculateBounds();
+            return m;
+        }
+
         /// <summary>Plano grande subdividido (para el agua con olas en el vertice).</summary>
         public static Mesh Grid(float size, int cells)
         {

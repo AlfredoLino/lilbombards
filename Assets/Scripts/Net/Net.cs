@@ -16,8 +16,8 @@ namespace LB
         public enum Mode { Offline, Host, Client }
 
         public const int Port = 7777;
-        public const int Protocol = 1;
-        public const string GameVersion = "0.2.1";
+        public const int Protocol = 2;
+        public const string GameVersion = "0.3.0";
 
         /// <summary>
         /// Servidor de rele para las salas online (dominio o IP del VPS, opcionalmente con ":puerto").

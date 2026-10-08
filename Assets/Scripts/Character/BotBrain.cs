@@ -190,7 +190,7 @@ namespace LB
             float targetD = target != null ? Flat(target.transform.position - pos).magnitude : 999f;
             if (best != null && bestD < targetD * 0.7f)
             {
-                move = Flat(best.transform.position - pos).normalized;
+                move = Flat(SteerTo(pos, best.transform.position) - pos).normalized;
                 Output(move, bestD > 2f, false, pos);
                 return;
             }
@@ -233,9 +233,11 @@ namespace LB
                 }
                 else
                 {
-                    // Acercarse con algo de zigzag.
-                    Vector3 side = new Vector3(-dir.z, 0f, dir.x) * Mathf.Sin(Time.time * 1.7f + me.GetHashCode()) * 0.35f;
-                    move = (dir + side).normalized;
+                    // Acercarse con algo de zigzag (por los puentes / rodeando agujeros si hace falta).
+                    Vector3 path = Flat(SteerTo(pos, target.transform.position) - pos);
+                    path = path.sqrMagnitude > 0.0001f ? path.normalized : dir;
+                    Vector3 side = new Vector3(-path.z, 0f, path.x) * Mathf.Sin(Time.time * 1.7f + me.GetHashCode()) * 0.35f;
+                    move = (path + side).normalized;
                     run = d > 3f && skill > 0.4f;
                 }
             }
@@ -244,9 +246,10 @@ namespace LB
                 if (wanderT <= 0f)
                 {
                     wanderT = Random.Range(1f, 2.5f);
-                    wander = new Vector3(Random.Range(-5f, 5f), 0f, Random.Range(-3f, 3f));
+                    wander = Arena.I != null ? Arena.I.RandomSafePoint() : new Vector3(Random.Range(-5f, 5f), 0f, Random.Range(-3f, 3f));
                 }
-                move = Flat(wander - pos);
+                move = Flat(SteerTo(pos, wander) - pos);
+                if (Flat(wander - pos).magnitude < 0.5f) move = Vector3.zero;
                 if (move.magnitude < 0.5f) move = Vector3.zero;
                 else move.Normalize();
             }
@@ -254,13 +257,29 @@ namespace LB
             Output(move, run, allowEdge, pos);
         }
 
+        Vector3 steerGoal, steerResult;
+        float steerTimer;
+
+        /// <summary>Ruta hacia un punto (puentes, rodear agujeros), recalculada 5 veces por segundo.</summary>
+        Vector3 SteerTo(Vector3 pos, Vector3 goal)
+        {
+            if (Arena.I == null) return goal;
+            steerTimer -= Time.deltaTime;
+            if (steerTimer <= 0f || (goal - steerGoal).sqrMagnitude > 1f)
+            {
+                steerTimer = 0.2f;
+                steerGoal = goal;
+                steerResult = Arena.I.Steer(pos, goal);
+            }
+            return steerResult;
+        }
+
         void Output(Vector3 move, bool run, bool allowEdge, Vector3 pos)
         {
             if (!allowEdge && Arena.I != null)
             {
                 float edge = Arena.I.EdgeDistance(pos);
-                Vector3 inward = Flat(-pos);
-                inward = inward.sqrMagnitude > 0.01f ? inward.normalized : Vector3.forward;
+                Vector3 inward = -Arena.I.Outward(pos); // lejos del borde o agujero mas cercano
                 if (edge < 1.4f)
                 {
                     float outwardAmount = Vector3.Dot(move, -inward);
@@ -309,12 +328,10 @@ namespace LB
 
         static Vector3 Outward(Vector3 pos)
         {
+            // Hacia el borde (o agujero) mas cercano del mapa.
+            if (Arena.I != null) return Arena.I.Outward(pos);
             Vector3 o = Flat(pos);
-            if (o.sqrMagnitude < 0.01f) o = Vector3.right;
-            // Hacia el borde mas cercano del rectangulo.
-            if (Arena.I != null && Mathf.Abs(pos.z) / Arena.I.HalfD > Mathf.Abs(pos.x) / Arena.I.HalfW)
-                return new Vector3(0f, 0f, Mathf.Sign(pos.z));
-            return new Vector3(Mathf.Sign(o.x), 0f, 0f);
+            return o.sqrMagnitude < 0.01f ? Vector3.right : o.normalized;
         }
 
         static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);

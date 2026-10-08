@@ -77,9 +77,11 @@ namespace LB
             float spread = Mathf.Max(size.x, size.z * 1.7f);
             // Mezcla con el centro del mapa para que la camara no se desplace demasiado.
             f = Vector3.Lerp(new Vector3(0f, 0f, 0.5f), new Vector3(center.x, 0f, center.z), 0.6f);
-            f.x = Mathf.Clamp(f.x, -4f, 4f);
-            f.z = Mathf.Clamp(f.z, -2.5f, 3f);
-            d = Mathf.Clamp(14f + spread * 0.75f, 15f, 26f);
+            Vector2 cx = Arena.I != null ? Arena.I.CamX : new Vector2(-4f, 4f);
+            Vector2 cz = Arena.I != null ? Arena.I.CamZ : new Vector2(-2.5f, 3f);
+            f.x = Mathf.Clamp(f.x, cx.x, cx.y);
+            f.z = Mathf.Clamp(f.z, cz.x, cz.y);
+            d = Mathf.Clamp(14f + spread * 0.75f, 15f, Arena.I != null ? Arena.I.CamMaxDist : 26f);
         }
 
         void LateUpdate()
